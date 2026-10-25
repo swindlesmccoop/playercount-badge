@@ -9,8 +9,7 @@ export interface GamePageInfo {
 }
 
 export function detectGamePage(_doc: Document, _mode: UIMode): GamePageInfo | null {
-  const w = window as any;
-  const pathname: string | undefined = w.MainWindowBrowserManager?.m_lastLocation?.pathname;
+  const pathname = window.MainWindowBrowserManager?.m_lastLocation?.pathname;
   if (pathname) {
     const m = pathname.match(/\/app\/(\d+)/);
     if (m) {

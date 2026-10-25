@@ -6,8 +6,10 @@ Click the badge to open the game's charts page on [SteamDB](https://steamdb.info
 
 ## Features
 - Live player count from Valve's public Steam Web API (no API key required)
-- Refreshes every 30 seconds while a game is selected
+- Refreshes while a game is selected (every 30 seconds by default)
 - Badge styling matches Steam's native stats tiles
+- Configurable badge colors: Default, Gradient, Rarity, Single color, No colors, or fully custom per-tier colors picked in the plugin settings
+- Configurable refresh interval: 30 seconds, 1 minute, 2 minutes, or 5 minutes
 - Click badge to open SteamDB charts in your system browser
 
 ## Requirements

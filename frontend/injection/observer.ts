@@ -1,5 +1,6 @@
 import { UIMode, detectGamePage } from './detector';
 import { clearPlayerCountCache, fetchPlayerCount } from '../services/playerCountApi';
+import type { PlayerCount } from '../services/playerCountApi';
 import {
   createBadge,
   ensureBadgePosition,
@@ -10,8 +11,8 @@ import {
 import {
   ACHIEVEMENTS_WAIT_MS,
   BADGE_ID,
+  getRefreshIntervalSeconds,
   isPluginEnabled,
-  REFRESH_INTERVAL_MS,
 } from '../constants';
 
 let observer: MutationObserver | null = null;
@@ -20,11 +21,21 @@ let refreshIntervalId: ReturnType<typeof setInterval> | null = null;
 let currentAppId: number | null = null;
 let processingAppId: number | null = null;
 let panelDoc: Document | null = null;
+let lastPlayerCount: PlayerCount | null = null;
 
 function clearRefreshInterval(): void {
   if (refreshIntervalId !== null) {
     clearInterval(refreshIntervalId);
     refreshIntervalId = null;
+  }
+}
+
+// Re-applies the current color scheme to the visible badge without
+// re-fetching. Called when the user changes color settings.
+export function refreshBadgeColors(): void {
+  const badge = panelDoc?.getElementById(BADGE_ID) as HTMLElement | null;
+  if (badge && lastPlayerCount) {
+    updateBadgeValue(badge, lastPlayerCount);
   }
 }
 
@@ -38,22 +49,38 @@ function resetStateForNoGame(): void {
   clearCurrentBadge();
   currentAppId = null;
   processingAppId = null;
+  lastPlayerCount = null;
 }
 
 function startRefreshLoop(appId: number): void {
   clearRefreshInterval();
 
+  const intervalMs = getRefreshIntervalSeconds() * 1000;
   refreshIntervalId = setInterval(async () => {
     if (currentAppId !== appId || !isPluginEnabled()) return;
 
-    const badge = panelDoc?.getElementById(BADGE_ID);
-    if (!badge) return;
+    if (!panelDoc?.getElementById(BADGE_ID)) return;
 
     const playerCount = await fetchPlayerCount(appId, { bypassCache: true });
     if (currentAppId !== appId || !playerCount) return;
 
-    updateBadgeValue(badge, playerCount);
-  }, REFRESH_INTERVAL_MS);
+    lastPlayerCount = playerCount;
+    // Look the badge up again: Steam may have re-rendered the row during the
+    // request, which would leave a reference taken before it pointing at a
+    // detached node.
+    const badge = panelDoc?.getElementById(BADGE_ID) as HTMLElement | null;
+    if (badge) {
+      updateBadgeValue(badge, playerCount);
+    }
+  }, intervalMs);
+}
+
+// Restarts the refresh loop with the currently configured interval.
+// Called when the user changes the refresh setting.
+export function applyRefreshInterval(): void {
+  if (currentAppId !== null && refreshIntervalId !== null) {
+    startRefreshLoop(currentAppId);
+  }
 }
 
 export function disconnectObserver(): void {
@@ -68,6 +95,7 @@ export function disconnectObserver(): void {
   currentAppId = null;
   processingAppId = null;
   panelDoc = null;
+  lastPlayerCount = null;
   clearPlayerCountCache();
 }
 
@@ -114,7 +142,9 @@ async function _handleGamePage(doc: Document, mode: UIMode): Promise<void> {
 
   if (currentAppId !== appId) {
     clearCurrentBadge();
-    clearPlayerCountCache(currentAppId ?? undefined);
+    if (currentAppId !== null) {
+      clearPlayerCountCache(currentAppId);
+    }
     currentAppId = appId;
     processingAppId = null;
   }
@@ -154,7 +184,7 @@ async function _handleGamePage(doc: Document, mode: UIMode): Promise<void> {
 
   const deadline = Date.now() + ACHIEVEMENTS_WAIT_MS;
   while (Date.now() < deadline) {
-    const rowNow = target.doc.getElementById(target.row.id as string) ?? target.row;
+    const rowNow = findToolbarRow()?.row ?? target.row;
     const hasAchievements = Array.from(rowNow.children).some(
       el => el.textContent?.includes('Achievements'),
     );
@@ -172,6 +202,7 @@ async function _handleGamePage(doc: Document, mode: UIMode): Promise<void> {
 
   const badge = createBadge(playerCount, appId, freshTarget.doc);
   insertBadgeInRow(freshTarget.row, badge);
+  lastPlayerCount = playerCount;
   startRefreshLoop(appId);
   processingAppId = null;
 }

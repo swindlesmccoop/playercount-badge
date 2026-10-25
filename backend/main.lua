@@ -15,7 +15,9 @@ function FetchPlayerCount(appId)
     local url = "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid="
         .. tostring(appId)
 
-    local res, err = http.get(url)
+    -- Bound the request: the frontend refreshes every 30s, so a hung request
+    -- must fail fast instead of wedging the badge update loop.
+    local res, err = http.get(url, { timeout = 10 })
     if not res then
         logger:error("FetchPlayerCount request failed: " .. tostring(err))
         return json.encode({ error = tostring(err) })

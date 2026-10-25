@@ -4,7 +4,7 @@
   "common_name": "Player Count",
   "description": "Show live Steam player counts on game library pages in desktop mode.",
   "author": "swindlesmccoop",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "useBackend": true,
   "backendType": "lua"
 }

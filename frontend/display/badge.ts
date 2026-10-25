@@ -14,8 +14,6 @@ const PlayBar = (findClassModule?.(
 const KNOWN: Record<string, string> = {
   GameStat:            '_1kiZKVbDe-9Ikootk57kpA',
   GameStatWithIcon:    '_1aKegVl9_lSdNAyWYZQlr9',
-  GameStatIcon:        '_1tIg-QIrwMNtCm7NcYADyi',
-  GameStatIconVariant: '_1GZdosVXnfrf69yU8DWASl',
   GameStatRight:       '_3m_zjRTQBqcfzCjXLXUHcR',
   PlayBarLabel:        '_34lrt5-Fc3usZU6trA1P0-',
   PlayBarDetailLabel:  '_2TYVGoD27ZMfjRirKQNLfk',
@@ -28,6 +26,16 @@ function c(key: string): string {
 export interface ToolbarTarget {
   row: HTMLElement;
   doc: Document;
+}
+
+function applyColor(el: HTMLElement, color: string): void {
+  if (color) {
+    el.style.color = color;
+  } else {
+    // Empty color means the "No colors" scheme: drop the inline style so
+    // Steam's default text color applies.
+    el.style.removeProperty('color');
+  }
 }
 
 let lastOpenMs = 0;
@@ -46,6 +54,7 @@ function openSteamDbCharts(appId: number): void {
       openInSystemBrowser(url);
       return;
     } catch {
+      // Fall through to the anchor click below.
     }
   }
 
@@ -128,32 +137,62 @@ export function ensureBadgePosition(row: HTMLElement, badge: HTMLElement): void 
   }
 }
 
-function createUsersIcon(doc: Document): SVGSVGElement {
-  const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('width', '23');
-  svg.setAttribute('height', '23');
-  svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const ICON_STYLE_ID = 'playercount-badge-style';
+const ICON_CLASS = 'playercount-badge-icon';
 
-  const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('fill', 'currentColor');
-  path.setAttribute(
-    'd',
-    'M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z',
-  );
-  svg.appendChild(path);
+// Two overlapping players, drawn as an outline on Steam's 26px icon grid. Size,
+// stroke weight and color were measured against the clock and trophy glyphs
+// (24-26px wide, ~2.2px stroke, white at 52% alpha) so it reads as one set.
+const PLAYERS_ICON_SHAPES = [
+  { tag: 'circle', attrs: { cx: '9.3', cy: '7.4', r: '4.3' } },
+  { tag: 'path', attrs: { d: 'M2.1 23.4v-1.5c0-4 3.2-7.3 7.2-7.3s7.2 3.3 7.2 7.3v1.5z' } },
+  { tag: 'path', attrs: { d: 'M17 3.1a4.3 4.3 0 0 1 0 8.6' } },
+  { tag: 'path', attrs: { d: 'M19.6 14.8c2.8.9 4.4 3.4 4.4 6.9v1.7h-4' } },
+];
+
+function createPlayersIcon(doc: Document): SVGSVGElement {
+  const svg = doc.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 26 26');
+  svg.setAttribute('width', '26');
+  svg.setAttribute('height', '26');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'hsla(0, 0%, 100%, 0.52)');
+  svg.setAttribute('stroke-width', '2.2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.style.display = 'block';
+
+  for (const { tag, attrs } of PLAYERS_ICON_SHAPES) {
+    const shape = doc.createElementNS(SVG_NS, tag);
+    for (const [name, value] of Object.entries(attrs)) {
+      shape.setAttribute(name, value);
+    }
+    svg.appendChild(shape);
+  }
 
   return svg;
 }
 
+// Steam hides its own stat icons in the narrow side panel and in the basic UI
+// layout. Mirror that so our icon never crowds the text in those layouts.
+function ensureIconStyle(doc: Document): void {
+  if (doc.getElementById(ICON_STYLE_ID)) return;
+  const style = doc.createElement('style');
+  style.id = ICON_STYLE_ID;
+  style.textContent =
+    `.NarrowRightPanel .${ICON_CLASS}, .BasicUI .${ICON_CLASS} { display: none !important; }`;
+  (doc.head ?? doc.documentElement).appendChild(style);
+}
+
 export function updateBadgeValue(badge: HTMLElement, playerCount: PlayerCount): void {
   const color = colorForPlayerCount(playerCount.count);
-  badge.style.color = color;
+  applyColor(badge, color);
 
   const valueSpan = badge.querySelector('[data-playercount-value="true"]') as HTMLElement | null;
   if (valueSpan) {
     valueSpan.textContent = playerCount.formatted;
-    valueSpan.style.color = color;
+    applyColor(valueSpan, color);
   }
 }
 
@@ -163,7 +202,7 @@ export function createBadge(playerCount: PlayerCount, appId: number, doc: Docume
   const tile = doc.createElement('div');
   tile.id = BADGE_ID;
   tile.className = [c('GameStat'), c('GameStatWithIcon')].filter(Boolean).join(' ');
-  tile.style.color = color;
+  applyColor(tile, color);
   tile.style.cursor = 'pointer';
   tile.style.pointerEvents = 'auto';
   tile.title = 'Open SteamDB charts';
@@ -185,22 +224,37 @@ export function createBadge(playerCount: PlayerCount, appId: number, doc: Docume
     }
   });
 
+  ensureIconStyle(doc);
+
   const iconDiv = doc.createElement('div');
-  iconDiv.className = [c('GameStatIcon'), c('GameStatIconVariant')].filter(Boolean).join(' ');
-  iconDiv.appendChild(createUsersIcon(doc));
+  iconDiv.className = ICON_CLASS;
+  // Use Steam's own icon metrics (30px box, 3px margin) pinned to the top. The
+  // old auto-margin centering floated the glyph down whenever a sibling tile,
+  // such as Achievements with its progress bar, made the row taller than ours,
+  // and the row's overflow clip then cut it off. We still avoid Steam's icon
+  // classes because newer clients paint a clock glyph on them.
+  iconDiv.style.display = 'flex';
+  iconDiv.style.alignItems = 'center';
+  iconDiv.style.justifyContent = 'center';
+  iconDiv.style.alignSelf = 'flex-start';
+  iconDiv.style.flexShrink = '0';
+  iconDiv.style.width = '30px';
+  iconDiv.style.height = '30px';
+  iconDiv.style.margin = '3px';
+  iconDiv.appendChild(createPlayersIcon(doc));
 
   const rightDiv = doc.createElement('div');
   rightDiv.className = c('GameStatRight');
 
   const labelSpan = doc.createElement('span');
   labelSpan.className = c('PlayBarLabel');
-  labelSpan.textContent = 'PLAYERS';
+  labelSpan.textContent = 'Players';
 
   const valueSpan = doc.createElement('span');
   valueSpan.className = c('PlayBarDetailLabel');
   valueSpan.setAttribute('data-playercount-value', 'true');
   valueSpan.textContent = playerCount.formatted;
-  valueSpan.style.color = color;
+  applyColor(valueSpan, color);
 
   rightDiv.appendChild(labelSpan);
   rightDiv.appendChild(valueSpan);
